@@ -21,9 +21,11 @@ package org.apache.hudi.index.hbase;
 import org.apache.hudi.client.HoodieWriteClient;
 import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.model.HoodieRecord;
+import org.apache.hudi.common.model.HoodieTableType;
 import org.apache.hudi.common.model.HoodieWriteStat;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.testutils.HoodieTestDataGenerator;
+import org.apache.hudi.common.testutils.HoodieTestUtils;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.config.HoodieCompactionConfig;
 import org.apache.hudi.config.HoodieHBaseIndexConfig;
@@ -46,6 +48,7 @@ import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.spark.api.java.JavaRDD;
+import org.junit.Assert;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -116,7 +119,17 @@ public class TestHBaseIndex extends FunctionalTestHarness {
   }
 
   @Test
-  public void testSimpleTagLocationAndUpdate() throws Exception {
+  public void testSimpleTagLocationAndUpdateCOW() throw Exception {
+    testSimpleTagLocationAndUpdate(HoodieTableType.COPY_ON_WRITE);
+  }
+
+  @Test void testSimpleTagLocationAndUpdateMOR() throws Exception {
+    testSimpleTagLocationAndUpdate(HoodieTableType.MERGE_ON_READ);
+  }
+
+  public void testSimpleTagLocationAndUpdate(HoodieTableType tableType) throws Exception {
+    metaClient = HoodieTestUtils.init(hadoopConf, basePath(), tableType);
+
     final String newCommitTime = "001";
     final int numRecords = 10;
     List<HoodieRecord> records = dataGen.generateInserts(newCommitTime, numRecords);
@@ -154,45 +167,6 @@ public class TestHBaseIndex extends FunctionalTestHarness {
       assertEquals(numRecords, records3.stream().filter(record -> (record.getCurrentLocation() != null
           && record.getCurrentLocation().getInstantTime().equals(newCommitTime))).distinct().count());
     }
-  }
-
-  @Test
-  public void testTagLocationAndDuplicateUpdate() throws Exception {
-    final String newCommitTime = "001";
-    final int numRecords = 10;
-    List<HoodieRecord> records = dataGen.generateInserts(newCommitTime, numRecords);
-    JavaRDD<HoodieRecord> writeRecords = jsc().parallelize(records, 1);
-
-    // Load to memory
-    HoodieWriteConfig config = getConfig();
-    HBaseIndex index = new HBaseIndex(config);
-    HoodieWriteClient writeClient = getHoodieWriteClient(config);
-    writeClient.startCommitWithTime(newCommitTime);
-    metaClient = HoodieTableMetaClient.reload(metaClient);
-    HoodieTable hoodieTable = HoodieTable.create(metaClient, config, hadoopConf);
-
-    JavaRDD<WriteStatus> writeStatues = writeClient.upsert(writeRecords, newCommitTime);
-    index.tagLocation(writeRecords, jsc(), hoodieTable);
-
-    // Duplicate upsert and ensure correctness is maintained
-    // We are trying to approximately imitate the case when the RDD is recomputed. For RDD creating, driver code is not
-    // recomputed. This includes the state transitions. We need to delete the inflight instance so that subsequent
-    // upsert will not run into conflicts.
-    metaClient.getFs().delete(new Path(metaClient.getMetaPath(), "001.inflight"));
-
-    writeClient.upsert(writeRecords, newCommitTime);
-    assertNoWriteErrors(writeStatues.collect());
-
-    // Now commit this & update location of records inserted and validate no errors
-    writeClient.commit(newCommitTime, writeStatues);
-    // Now tagLocation for these records, hbaseIndex should tag them correctly
-    metaClient = HoodieTableMetaClient.reload(metaClient);
-    hoodieTable = HoodieTable.create(metaClient, config, hadoopConf);
-    List<HoodieRecord> taggedRecords = index.tagLocation(writeRecords, jsc(), hoodieTable).collect();
-    assertEquals(numRecords, taggedRecords.stream().filter(HoodieRecord::isCurrentLocationKnown).count());
-    assertEquals(numRecords, taggedRecords.stream().map(record -> record.getKey().getRecordKey()).distinct().count());
-    assertEquals(numRecords, taggedRecords.stream().filter(record -> (record.getCurrentLocation() != null
-        && record.getCurrentLocation().getInstantTime().equals(newCommitTime))).distinct().count());
   }
 
   @Test
