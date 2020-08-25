@@ -129,6 +129,7 @@
     <jacoco.version>0.8.5</jacoco.version>
     <presto.bundle.bootstrap.scope>compile</presto.bundle.bootstrap.scope>
     <presto.bundle.bootstrap.shade.prefix>org.apache.hudi.</presto.bundle.bootstrap.shade.prefix>
+    <timeline.service.jetty.shade.prefix>org.apache.hudi.timeline-service-jetty.</timeline.service.jetty.shade.prefix>
   </properties>
 
   <scm>
