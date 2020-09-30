@@ -44,12 +44,12 @@ import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.streaming.DataStreamWriter;
 import org.apache.spark.sql.streaming.OutputMode;
 import org.apache.spark.sql.streaming.ProcessingTime;
+import org.apache.spark.sql.streaming.StreamingQuery;
 
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import org.apache.spark.sql.streaming.StreamingQuery;
 
 import static org.apache.hudi.common.testutils.RawTripTestPayload.recordsToStrings;
 

@@ -20,7 +20,6 @@ package org.apache.hudi
 
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hudi.common.model.HoodieRecord
-import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.execution.datasources.{FileStatusCache, InMemoryFileIndex}
 import org.apache.spark.sql.types.{StringType, StructField, StructType}
@@ -35,10 +34,24 @@ object HoodieSparkUtils {
     }))
   }
 
+  def isGlobPath(pattern: Path): Boolean = {
+    pattern.toString.exists("{}[]*?\\".toSet.contains)
+  }
+
+  def globPath(fs: FileSystem, pattern: Path): Seq[Path] = {
+    Option(fs.globStatus(pattern)).map { statuses =>
+      statuses.map(_.getPath.makeQualified(fs.getUri, fs.getWorkingDirectory)).toSeq
+    }.getOrElse(Seq.empty[Path])
+  }
+
+  def globPathIfNecessary(fs: FileSystem, pattern: Path): Seq[Path] = {
+    if (isGlobPath(pattern)) globPath(fs, pattern) else Seq(pattern)
+  }
+
   def checkAndGlobPathIfNecessary(paths: Seq[String], fs: FileSystem): Seq[Path] = {
     paths.flatMap(path => {
       val qualified = new Path(path).makeQualified(fs.getUri, fs.getWorkingDirectory)
-      val globPaths = SparkHadoopUtil.get.globPathIfNecessary(fs, qualified)
+      val globPaths = globPathIfNecessary(fs, qualified)
       globPaths
     })
   }
